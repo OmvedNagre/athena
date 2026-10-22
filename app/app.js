@@ -9,6 +9,7 @@ let startTimestamp = null;
 let timerInterval = null;
 let cameraSnapInterval = null;
 let backendProcess = null;
+let viteProcess = null;
 let snapshotFolder = path.join(import.meta.dirname, "user-camera-snap");
 
 // Function to auto-start backend if not already listening
@@ -34,9 +35,64 @@ function startBackendIfNeeded() {
     });
 }
 
+// Function to auto-start Vite dev server if not already listening
+function startViteIfNeeded() {
+    return new Promise((resolve) => {
+        const checkReq = http.get("http://localhost:5173/", () => {
+            console.log("Vite dev server already active on http://localhost:5173");
+            resolve(true);
+        });
+
+        checkReq.on("error", () => {
+            const rootDir = path.join(import.meta.dirname, "..");
+            const viteBin = path.join(rootDir, "node_modules", ".bin", "vite");
+            const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+
+            console.log("Starting Vite dev server...");
+            if (fs.existsSync(viteBin)) {
+                viteProcess = spawn(viteBin, [], {
+                    cwd: rootDir,
+                    stdio: "pipe"
+                });
+            } else {
+                viteProcess = spawn(npxCmd, ["vite"], {
+                    cwd: rootDir,
+                    stdio: "pipe"
+                });
+            }
+
+            viteProcess.stdout?.on("data", (d) => console.log(`[Vite] ${d}`));
+            viteProcess.stderr?.on("data", (d) => console.error(`[Vite ERR] ${d}`));
+            resolve(true);
+        });
+    });
+}
+
 // Ensure default snapshot folder exists
 if (!fs.existsSync(snapshotFolder)) {
     fs.mkdirSync(snapshotFolder, { recursive: true });
+}
+
+async function loadFrontendWithRetry(win) {
+    const url = "http://localhost:5173";
+    const maxRetries = 25;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        if (!win || win.isDestroyed()) return;
+        try {
+            await win.loadURL(url);
+            return;
+        } catch (err) {
+            if (attempt === maxRetries) {
+                console.error("Could not load Vite dev server, checking local build fallback:", err.message);
+                const distIndex = path.join(import.meta.dirname, "..", "dist", "index.html");
+                if (fs.existsSync(distIndex)) {
+                    win.loadFile(distIndex);
+                    return;
+                }
+            }
+            await new Promise((r) => setTimeout(r, 400));
+        }
+    }
 }
 
 function createWindow() {
@@ -51,7 +107,7 @@ function createWindow() {
         }
     });
 
-    electronWindow.loadURL('http://localhost:5173');
+    loadFrontendWithRetry(electronWindow);
 }
 
 ipcMain.handle('start-timer', () => {
@@ -169,8 +225,9 @@ ipcMain.on("show-rules", () => {
     });
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     startBackendIfNeeded();
+    await startViteIfNeeded();
     createWindow();
 });
 
@@ -184,6 +241,14 @@ function cleanupResources() {
             console.error("Error stopping backend process:", err);
         }
         backendProcess = null;
+    }
+    if (viteProcess) {
+        try {
+            viteProcess.kill();
+        } catch (err) {
+            console.error("Error stopping Vite process:", err);
+        }
+        viteProcess = null;
     }
 }
 
