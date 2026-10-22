@@ -30,6 +30,10 @@ function App() {
   // Navigation / View State: 'setup' | 'exam' | 'submitted'
   const [currentView, setCurrentView] = useState('setup');
 
+  // Dynamic Candidate Credentials State (Prompt student on setup)
+  const [candidateName, setCandidateName] = useState('');
+  const [enrollmentId, setEnrollmentId] = useState('');
+
   // Permissions & Proctoring State
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [fullScreen, setFullScreen] = useState(false);
@@ -237,8 +241,16 @@ function App() {
     }
   }
 
-  // Start Test & Transition to Exam View with Lockdown Mode Enabled
+  // Start Test & Transition to Exam View with Dynamic Candidate Credentials
   const handleStartTest = async () => {
+    const trimmedName = candidateName.trim();
+    const trimmedEnrollment = enrollmentId.trim();
+
+    if (!trimmedName || !trimmedEnrollment) {
+      alert('Please enter your Name and Enrollment ID to start the exam.');
+      return;
+    }
+
     if (!cameraEnabled || !fullScreen) return;
     if (isLoading) return;
 
@@ -251,16 +263,16 @@ function App() {
         await window.athena.startTimerOnMain();
       }
 
-      // 2. Enable strict proctoring lockdown mode (blocks Cmd+Tab, Alt+Tab, macOS gestures, and space switches)
+      // 2. Enable strict proctoring lockdown mode
       if (window.athena?.setLockdownMode) {
         await window.athena.setLockdownMode(true);
       }
 
-      // 3. Create session on Express Backend for candidate Omved
+      // 3. Create session on Express Backend with student credentials
       const sessionData = await apiRequest('/exam/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'student-101', name: 'Omved' }),
+        body: JSON.stringify({ userId: trimmedEnrollment, name: trimmedName }),
       });
 
       setSessionId(sessionData.sessionId);
@@ -385,6 +397,7 @@ function App() {
   const answeredCount = Object.keys(answers).length;
   const currentQuestion = questions[currentQuestionIndex];
   const isCurrentReviewed = currentQuestion ? reviewedQuestionIds.includes(currentQuestion.id) : false;
+  const canStartTest = candidateName.trim().length > 0 && enrollmentId.trim().length > 0 && cameraEnabled && fullScreen;
 
   return (
     <div className={currentView === 'setup' ? 'page-wrapper' : 'exam-page-wrapper'}>
@@ -434,14 +447,77 @@ function App() {
       {/* ======================================================== */}
       {currentView === 'setup' && (
         <>
-          {/* Top Greeting Header (Updated to Omved) */}
+          {/* Top Greeting Header (Dynamic to candidateName) */}
           <header className="header-section">
-            <h1 className="header-title">Hi Omved!</h1>
-            <p className="header-subtitle">Kindly Allow the following Permissions to Start the test:</p>
+            <h1 className="header-title">Hi {candidateName.trim() || 'Student'}!</h1>
+            <p className="header-subtitle">Kindly enter your credentials and allow permissions to start the assessment:</p>
           </header>
 
           {/* Main Permissions Card */}
           <div className="card-container">
+            {/* Candidate Details Input Section */}
+            <div className="candidate-inputs-card">
+              <div className="candidate-inputs-header">
+                <div className="icon-box-sm">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="section-subheading">Candidate Identification</h3>
+                  <p className="section-subdesc">Enter your full name and student enrollment ID to authenticate your session.</p>
+                </div>
+              </div>
+
+              <div className="candidate-form-grid">
+                <div className="form-group">
+                  <label htmlFor="studentName" className="form-label">
+                    Full Name <span className="required-star">*</span>
+                  </label>
+                  <div className="input-with-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                    <input
+                      id="studentName"
+                      type="text"
+                      className="text-input"
+                      placeholder="e.g. Omved Nagre"
+                      value={candidateName}
+                      onChange={(e) => setCandidateName(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="enrollmentId" className="form-label">
+                    Enrollment ID / Student ID <span className="required-star">*</span>
+                  </label>
+                  <div className="input-with-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="16" rx="2" />
+                      <line x1="7" y1="8" x2="17" y2="8" />
+                      <line x1="7" y1="12" x2="17" y2="12" />
+                      <line x1="7" y1="16" x2="12" y2="16" />
+                    </svg>
+                    <input
+                      id="enrollmentId"
+                      type="text"
+                      className="text-input"
+                      placeholder="e.g. ENROLL-2026-101"
+                      value={enrollmentId}
+                      onChange={(e) => setEnrollmentId(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div className="divider"></div>
+
             {/* Section 1: Configure Camera */}
             <div className="permission-item">
               <div className="icon-box">
@@ -545,7 +621,7 @@ function App() {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={!cameraEnabled || !fullScreen || isLoading}
+              disabled={!canStartTest || isLoading}
               onClick={handleStartTest}
               style={{ minWidth: '130px' }}
             >
@@ -565,6 +641,14 @@ function App() {
               Show Rule's
             </button>
           </div>
+
+          {(!candidateName.trim() || !enrollmentId.trim()) && (
+            <div style={{ textAlign: 'center', marginTop: '-12px', marginBottom: '18px' }}>
+              <span className="candidate-hint-text">
+                * Please enter your Full Name and Enrollment ID above to enable the test button.
+              </span>
+            </div>
+          )}
 
           {apiError && (
             <div className="api-error-banner">
@@ -673,7 +757,7 @@ function App() {
               <div className="brand-badge">ATHENA</div>
               <div className="brand-info">
                 <span className="exam-main-title">Assessment Test</span>
-                <span className="exam-candidate-tag">Candidate: Omved (student-101)</span>
+                <span className="exam-candidate-tag">Candidate: {candidateName.trim()} ({enrollmentId.trim()})</span>
               </div>
             </div>
 
@@ -693,7 +777,7 @@ function App() {
 
             {/* Right Side: Compact Live Proctoring Video & Actions */}
             <div className="exam-nav-right">
-              {/* Compact Fixed Proctoring Video Box (140x84) */}
+              {/* Compact Fixed Proctoring Video Box (150x95) */}
               <div className="exam-pip-camera">
                 <video
                   ref={videoRef}
@@ -868,6 +952,14 @@ function App() {
                 <div className="proctoring-summary-box">
                   <span className="proctoring-summary-title">Proctoring Telemetry</span>
                   <div className="telemetry-row">
+                    <span>Candidate Name:</span>
+                    <strong>{candidateName.trim()}</strong>
+                  </div>
+                  <div className="telemetry-row">
+                    <span>Enrollment ID:</span>
+                    <strong>{enrollmentId.trim()}</strong>
+                  </div>
+                  <div className="telemetry-row">
                     <span>Snapshots Recorded:</span>
                     <strong>{snapshotCount}</strong>
                   </div>
@@ -902,6 +994,14 @@ function App() {
           </div>
 
           <h1 className="header-title" style={{ marginTop: '16px' }}>Exam Submitted Successfully!</h1>
+          
+          {/* Dynamic Candidate Identifier Pill */}
+          <div className="candidate-summary-badge">
+            <span className="candidate-badge-name">{candidateName.trim()}</span>
+            <span className="candidate-badge-dot">•</span>
+            <span className="candidate-badge-id">ID: {enrollmentId.trim()}</span>
+          </div>
+
           <p className="header-subtitle" style={{ marginBottom: '28px' }}>
             Your test responses and proctoring telemetry have been verified and recorded.
           </p>
@@ -1057,6 +1157,14 @@ function App() {
             </p>
 
             <div className="submit-summary-box">
+              <div className="summary-row">
+                <span>Candidate Name:</span>
+                <strong>{candidateName.trim()}</strong>
+              </div>
+              <div className="summary-row">
+                <span>Enrollment ID:</span>
+                <strong style={{ fontFamily: 'ui-monospace, monospace' }}>{enrollmentId.trim()}</strong>
+              </div>
               <div className="summary-row">
                 <span>Total Questions:</span>
                 <strong>{questions.length}</strong>

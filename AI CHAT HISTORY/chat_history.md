@@ -128,5 +128,34 @@ This document records the chronological history of requirements, bug analyses, e
 - [x] Mark for Review Functionality: Implemented
 - [x] Candidate Name: Updated to Omved
 - [x] PiP Live Proctor Badge: Scaled and repositioned away from face
+- [x] Dynamic Candidate Authentication: Implemented (Name & Enrollment ID requested prior to starting test)
+- [x] Dynamic Session Forwarding: Dynamic payload sent to `/exam/start`
+- [x] Dynamic Exam UI: Name & ID shown on navbar, sidebar telemetry, submit confirmation modal, and results screen
 - [x] GitHub Synchronization: Pushed to `OmvedNagre/athena`
+
+---
+
+## Session Milestone: Dynamic Candidate Identification & Authentication
+
+### User Prompt
+> "Make the name instead of Omved being hard-coded to dynamic like before starting of an exam ask the student for their name and their enrollment id (instead of hard coded 101 studen id)"
+
+### Assistant Action & Solution
+1. **Interactive Candidate Input Card**:
+   - Added `candidateName` and `enrollmentId` dynamic state in `src/App.jsx`.
+   - Initialized to empty strings (`''`) to require the student to enter their information before launch.
+   - Built a two-column input card (`.candidate-inputs-card`) with SVG icons, floating placeholders, and validation indicators.
+2. **Dynamic Header & Real-time Greeting**:
+   - The top welcome greeting (`Hi {candidateName.trim() || 'Student'}!`) reflects typing in real time.
+3. **Four-Factor Launch Validation Gate**:
+   - Updated `canStartTest` to ensure Full Name, Enrollment ID, Camera permission, and Fullscreen are all verified before "Go To Test" is unlocked.
+4. **End-to-End Propagation**:
+   - Passes `{ userId: enrollmentId.trim(), name: candidateName.trim() }` dynamically to `POST /exam/start`.
+   - Displays dynamic credentials on the active exam navbar tag, sidebar Question Palette telemetry, Submit Confirmation modal, and Exam Results summary.
+5. **Modern Styling**:
+   - Added styles for `.candidate-inputs-card`, `.candidate-form-grid`, `.form-group`, `.text-input`, `.candidate-hint-text`, and `.candidate-summary-badge` in `src/App.css`.
+6. **Documentation & Verification**:
+   - Documented in `Improvements/005_dynamic_candidate_credentials_and_pip_badge_scaling.md`.
+   - Verified clean build (`npm run build`) and ESLint (`npm run lint`).
+
 
