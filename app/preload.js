@@ -54,5 +54,23 @@ contextBridge.exposeInMainWorld("athena", {
     // Functions related to showing Contest Rules
     showRules: () => {
         ipcRenderer.send("show-rules");
+    },
+
+    // Functions related to Proctoring Lockdown & App Switching Prevention
+    setLockdownMode: (enabled) => {
+        return ipcRenderer.invoke('set-lockdown-mode', enabled);
+    },
+    getLockdownStatus: () => {
+        return ipcRenderer.invoke('get-lockdown-status');
+    },
+    registerListenerForProctoringViolation: (callback) => {
+        const fn = (_event, violation) => {
+            callback(violation);
+        };
+        ipcRenderer.on('proctoring-violation', fn);
+
+        return () => {
+            ipcRenderer.removeListener('proctoring-violation', fn);
+        };
     }
 });

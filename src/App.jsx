@@ -42,11 +42,16 @@ function App() {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [snapshotCount, setSnapshotCount] = useState(0);
 
+  // Lockdown & Violation Monitoring State
+  const [proctoringViolation, setProctoringViolation] = useState(null);
+  const [violationCount, setViolationCount] = useState(0);
+
   // Exam & Backend Data State
   const [sessionId, setSessionId] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState({}); // { [questionId]: selectedOptionIndex }
+  const [reviewedQuestionIds, setReviewedQuestionIds] = useState([]); // [questionId, ...]
   const [examResult, setExamResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -92,7 +97,16 @@ function App() {
       });
     }
 
-    // 5. Fullscreen change listener to sync state if candidate exits via ESC
+    // 5. Register Listener for Proctoring Violations (Tab switch, Gesture, or Forbidden Shortcut)
+    let removeViolationListener = () => {};
+    if (window.athena?.registerListenerForProctoringViolation) {
+      removeViolationListener = window.athena.registerListenerForProctoringViolation((violation) => {
+        setViolationCount((prev) => prev + 1);
+        setProctoringViolation(violation?.message || 'Unauthorized window switch or space swipe detected.');
+      });
+    }
+
+    // 6. Fullscreen change listener to sync state if candidate exits via ESC
     const handleFullscreenChange = () => {
       setFullScreen(!!document.fullscreenElement);
     };
@@ -101,6 +115,7 @@ function App() {
     return () => {
       removeTimerTickListener();
       removeCameraSnapListener();
+      removeViolationListener();
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -222,7 +237,7 @@ function App() {
     }
   }
 
-  // Start Test & Transition to Exam View
+  // Start Test & Transition to Exam View with Lockdown Mode Enabled
   const handleStartTest = async () => {
     if (!cameraEnabled || !fullScreen) return;
     if (isLoading) return;
@@ -231,28 +246,33 @@ function App() {
     setApiError(null);
 
     try {
-      // 1. Start Electron timer & 5-second snapshot monitoring (does not reset if already running)
+      // 1. Start Electron timer & 5-second snapshot monitoring
       if (window.athena?.startTimerOnMain) {
         await window.athena.startTimerOnMain();
       }
 
-      // 2. Create session on Express Backend
+      // 2. Enable strict proctoring lockdown mode (blocks Cmd+Tab, Alt+Tab, macOS gestures, and space switches)
+      if (window.athena?.setLockdownMode) {
+        await window.athena.setLockdownMode(true);
+      }
+
+      // 3. Create session on Express Backend for candidate Omved
       const sessionData = await apiRequest('/exam/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: 'student-101', name: 'Vaibhav' }),
+        body: JSON.stringify({ userId: 'student-101', name: 'Omved' }),
       });
 
       setSessionId(sessionData.sessionId);
 
-      // 3. Fetch questions from Express Backend
+      // 4. Fetch questions from Express Backend
       const questionsData = await apiRequest('/exam/mcq');
       setQuestions(questionsData);
       setCurrentQuestionIndex(0);
       setTestStarted(true);
       setCurrentView('exam');
 
-      setFeedbackNotice('Exam session started. Timer & snapshot monitoring active.');
+      setFeedbackNotice('Exam session started. Proctoring lockdown & snapshot monitoring active.');
       setTimeout(() => setFeedbackNotice(null), 3500);
     } catch (error) {
       console.error('Start test error:', error);
@@ -289,6 +309,17 @@ function App() {
     }
   };
 
+  // Toggle "Mark for Review" status
+  const handleToggleMarkForReview = (questionId) => {
+    setReviewedQuestionIds((prev) => {
+      const exists = prev.includes(questionId);
+      const updated = exists ? prev.filter((id) => id !== questionId) : [...prev, questionId];
+      setFeedbackNotice(exists ? 'Question unmarked from review.' : 'Question marked for review.');
+      setTimeout(() => setFeedbackNotice(null), 2500);
+      return updated;
+    });
+  };
+
   // Submit Complete Exam
   const handleConfirmSubmit = async () => {
     if (!sessionId) return;
@@ -304,6 +335,11 @@ function App() {
       // Stop Electron timer and snapshot interval cleanly
       if (window.athena?.stopTimerOnMain) {
         await window.athena.stopTimerOnMain();
+      }
+
+      // Release lockdown mode
+      if (window.athena?.setLockdownMode) {
+        await window.athena.setLockdownMode(false);
       }
 
       setExamResult(res.result);
@@ -325,13 +361,19 @@ function App() {
     if (window.athena?.resetTimerOnMain) {
       await window.athena.resetTimerOnMain();
     }
+    if (window.athena?.setLockdownMode) {
+      await window.athena.setLockdownMode(false);
+    }
     setElapsedSeconds(0);
     setTestStarted(false);
     setSessionId(null);
     setQuestions([]);
     setAnswers({});
+    setReviewedQuestionIds([]);
     setCurrentQuestionIndex(0);
     setExamResult(null);
+    setProctoringViolation(null);
+    setViolationCount(0);
     setCurrentView('setup');
   };
 
@@ -339,9 +381,10 @@ function App() {
     setShowRulesModal(true);
   };
 
-  // Total attempted answers count
+  // Counts for questions
   const answeredCount = Object.keys(answers).length;
   const currentQuestion = questions[currentQuestionIndex];
+  const isCurrentReviewed = currentQuestion ? reviewedQuestionIds.includes(currentQuestion.id) : false;
 
   return (
     <div className={currentView === 'setup' ? 'page-wrapper' : 'exam-page-wrapper'}>
@@ -363,14 +406,37 @@ function App() {
         </div>
       )}
 
+      {/* Proctoring Violation Alert Banner */}
+      {proctoringViolation && (
+        <div className="proctoring-violation-alert">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div style={{ flex: 1 }}>
+            <div className="violation-title">Proctoring Security Warning (Infraction #{violationCount})</div>
+            <div className="violation-desc">{proctoringViolation}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setProctoringViolation(null)}
+            className="toast-close-btn"
+            style={{ color: '#991b1b' }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ======================================================== */}
-      {/* VIEW 1: PERMISSIONS & SETUP SCREEN (Matches Reference UI) */}
+      {/* VIEW 1: PERMISSIONS & SETUP SCREEN                       */}
       {/* ======================================================== */}
       {currentView === 'setup' && (
         <>
-          {/* Top Greeting Header */}
+          {/* Top Greeting Header (Updated to Omved) */}
           <header className="header-section">
-            <h1 className="header-title">Hi Vaibhav!</h1>
+            <h1 className="header-title">Hi Omved!</h1>
             <p className="header-subtitle">Kindly Allow the following Permissions to Start the test:</p>
           </header>
 
@@ -607,15 +673,22 @@ function App() {
               <div className="brand-badge">ATHENA</div>
               <div className="brand-info">
                 <span className="exam-main-title">Assessment Test</span>
-                <span className="exam-candidate-tag">Candidate: Vaibhav (student-101)</span>
+                <span className="exam-candidate-tag">Candidate: Omved (student-101)</span>
               </div>
             </div>
 
-            {/* Middle Live Clockwork Stopwatch */}
-            <div className="exam-timer-pill">
-              <span className="pulse-recording-dot"></span>
-              <span className="timer-label">Time Elapsed:</span>
-              <span className="timer-digits">{formatClock(elapsedSeconds)}</span>
+            {/* Middle Live Clockwork Stopwatch & Lockdown Status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="exam-timer-pill">
+                <span className="pulse-recording-dot"></span>
+                <span className="timer-label">Time Elapsed:</span>
+                <span className="timer-digits">{formatClock(elapsedSeconds)}</span>
+              </div>
+
+              <div className="lockdown-pill" title="Kiosk Mode Active: Cmd+Tab and Desktop gestures are restricted">
+                <span className="lockdown-dot"></span>
+                LOCKDOWN ENFORCED
+              </div>
             </div>
 
             {/* Right Side: Compact Live Proctoring Video & Actions */}
@@ -661,12 +734,27 @@ function App() {
               {currentQuestion ? (
                 <div className="question-card">
                   <div className="question-card-header">
-                    <span className="question-badge">
-                      Question {currentQuestionIndex + 1} of {questions.length}
-                    </span>
-                    <span className={`status-pill ${answers[currentQuestion.id] !== undefined ? 'answered' : 'unanswered'}`}>
-                      {answers[currentQuestion.id] !== undefined ? 'Answered' : 'Not Answered'}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span className="question-badge">
+                        Question {currentQuestionIndex + 1} of {questions.length}
+                      </span>
+                      <span className={`status-pill ${answers[currentQuestion.id] !== undefined ? 'answered' : 'unanswered'}`}>
+                        {answers[currentQuestion.id] !== undefined ? 'Answered' : 'Not Answered'}
+                      </span>
+                    </div>
+
+                    {/* Mark for Review Button */}
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${isCurrentReviewed ? 'btn-review-active' : 'btn-review-outline'}`}
+                      onClick={() => handleToggleMarkForReview(currentQuestion.id)}
+                      title="Flag this question to review later before submission"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill={isCurrentReviewed ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                      </svg>
+                      <span>{isCurrentReviewed ? 'Marked for Review' : 'Mark for Review'}</span>
+                    </button>
                   </div>
 
                   <h2 className="question-title">
@@ -746,13 +834,15 @@ function App() {
                 <div className="palette-grid">
                   {questions.map((q, idx) => {
                     const isAnswered = answers[q.id] !== undefined;
+                    const isReviewed = reviewedQuestionIds.includes(q.id);
                     const isCurrent = idx === currentQuestionIndex;
                     return (
                       <button
                         key={q.id}
                         type="button"
-                        className={`palette-item ${isAnswered ? 'answered' : ''} ${isCurrent ? 'current' : ''}`}
+                        className={`palette-item ${isAnswered ? 'answered' : ''} ${isReviewed ? 'reviewed' : ''} ${isCurrent ? 'current' : ''}`}
                         onClick={() => setCurrentQuestionIndex(idx)}
+                        title={`Question ${idx + 1}: ${isAnswered ? 'Answered' : 'Unanswered'}${isReviewed ? ' (Marked for Review)' : ''}`}
                       >
                         {idx + 1}
                       </button>
@@ -764,6 +854,10 @@ function App() {
                   <div className="legend-item">
                     <span className="legend-dot answered"></span>
                     <span>Answered ({answeredCount})</span>
+                  </div>
+                  <div className="legend-item">
+                    <span className="legend-dot reviewed"></span>
+                    <span>Marked for Review ({reviewedQuestionIds.length})</span>
                   </div>
                   <div className="legend-item">
                     <span className="legend-dot unanswered"></span>
@@ -782,8 +876,12 @@ function App() {
                     <strong>Every 5s</strong>
                   </div>
                   <div className="telemetry-row">
-                    <span>Session:</span>
-                    <strong style={{ fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sessionId}</strong>
+                    <span>Lockdown Mode:</span>
+                    <strong style={{ color: '#16a34a' }}>Enforced</strong>
+                  </div>
+                  <div className="telemetry-row">
+                    <span>Switch Infractions:</span>
+                    <strong style={{ color: violationCount > 0 ? '#dc2626' : '#16a34a' }}>{violationCount}</strong>
                   </div>
                 </div>
               </div>
@@ -796,7 +894,7 @@ function App() {
       {/* VIEW 3: EXAM SUBMISSION SUMMARY & RESULTS                */}
       {/* ======================================================== */}
       {currentView === 'submitted' && (
-        <div className="card-container" style={{ textAlign: 'center', maxWidth: '640px', margin: '40px auto' }}>
+        <div className="card-container" style={{ textAlign: 'center', maxWidth: '680px', margin: '40px auto' }}>
           <div className="success-icon-badge">
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
@@ -831,11 +929,41 @@ function App() {
             </div>
           )}
 
-          <div className="proctoring-stats-banner">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-            <span>Proctoring Integrity: {snapshotCount} webcam snapshots stored in <code>{saveFolder}</code></span>
+          {/* HIGH-CONTRAST PROCTORING VERIFICATION & AUDIT CARD */}
+          <div className="proctoring-audit-card">
+            <div className="audit-header">
+              <div className="audit-icon-wrap">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  <polyline points="9 12 11 14 15 10" />
+                </svg>
+              </div>
+              <div className="audit-title-block">
+                <h4 className="audit-title">Proctoring Telemetry & Verification</h4>
+                <span className="audit-subtitle">Automated background security audit completed</span>
+              </div>
+              <span className="audit-status-badge">Verified</span>
+            </div>
+
+            <div className="audit-body">
+              <div className="audit-metric-row">
+                <span className="audit-label">Webcam Snapshots Recorded:</span>
+                <span className="audit-value-highlight">
+                  <strong>{snapshotCount} frames</strong>
+                  <span className="audit-interval-tag">Strict 5s Interval</span>
+                </span>
+              </div>
+
+              <div className="audit-metric-row">
+                <span className="audit-label">Snapshot Audit Directory:</span>
+                <div className="audit-path-badge" title={saveFolder}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <code>{saveFolder}</code>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div style={{ marginTop: '28px', display: 'flex', justifyContent: 'center', gap: '14px' }}>
@@ -870,7 +998,7 @@ function App() {
             <ul className="rules-list">
               <li>
                 <span className="rule-number">1</span>
-                <span><strong>Stay on the exam screen:</strong> Navigating away from the active window will be logged as an infraction.</span>
+                <span><strong>Stay on the exam screen:</strong> Navigating away from the active window, switching desktops, or using Cmd+Tab will be flagged and blocked.</span>
               </li>
               <li>
                 <span className="rule-number">2</span>
@@ -878,7 +1006,7 @@ function App() {
               </li>
               <li>
                 <span className="rule-number">3</span>
-                <span><strong>Fullscreen mode is mandatory:</strong> Exiting fullscreen mode triggers proctoring warnings.</span>
+                <span><strong>Fullscreen mode is mandatory:</strong> Exiting fullscreen mode triggers proctoring security warnings.</span>
               </li>
               <li>
                 <span className="rule-number">4</span>
@@ -938,6 +1066,10 @@ function App() {
                 <strong style={{ color: '#16a34a' }}>{answeredCount}</strong>
               </div>
               <div className="summary-row">
+                <span>Marked for Review:</span>
+                <strong style={{ color: '#7c3aed' }}>{reviewedQuestionIds.length}</strong>
+              </div>
+              <div className="summary-row">
                 <span>Unanswered Questions:</span>
                 <strong style={{ color: '#dc2626' }}>{questions.length - answeredCount}</strong>
               </div>
@@ -946,6 +1078,12 @@ function App() {
                 <strong>{formatClock(elapsedSeconds)}</strong>
               </div>
             </div>
+
+            {reviewedQuestionIds.length > 0 && (
+              <div style={{ marginTop: '14px', fontSize: '13px', color: '#7c3aed', background: '#f5f3ff', padding: '10px 14px', borderRadius: '8px', border: '1px solid #ddd6fe' }}>
+                Note: You currently have {reviewedQuestionIds.length} question(s) marked for review.
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
               <button

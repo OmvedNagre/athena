@@ -17,5 +17,60 @@
         "answeredAt": "2026-10-22T10:24:40.529Z"
       }
     ]
+  },
+  {
+    "sessionId": "session-1792669095598",
+    "userId": "student-101",
+    "name": "Vaibhav",
+    "startedAt": "2026-10-22T11:38:15.598Z",
+    "submittedAt": "2026-10-22T11:38:38.127Z",
+    "status": "submitted",
+    "attempted": 5,
+    "correct": 2,
+    "wrong": 3,
+    "answers": [
+      {
+        "questionId": 1,
+        "selectedAnswer": 0,
+        "isCorrect": false,
+        "answeredAt": "2026-10-22T11:38:27.575Z"
+      },
+      {
+        "questionId": 2,
+        "selectedAnswer": 2,
+        "isCorrect": false,
+        "answeredAt": "2026-10-22T11:38:28.928Z"
+      },
+      {
+        "questionId": 3,
+        "selectedAnswer": 1,
+        "isCorrect": true,
+        "answeredAt": "2026-10-22T11:38:31.812Z"
+      },
+      {
+        "questionId": 4,
+        "selectedAnswer": 2,
+        "isCorrect": false,
+        "answeredAt": "2026-10-22T11:38:33.190Z"
+      },
+      {
+        "questionId": 5,
+        "selectedAnswer": 1,
+        "isCorrect": true,
+        "answeredAt": "2026-10-22T11:38:36.090Z"
+      }
+    ]
+  },
+  {
+    "sessionId": "session-1792669148291",
+    "userId": "student-101",
+    "name": "Vaibhav",
+    "startedAt": "2026-10-22T11:39:08.291Z",
+    "submittedAt": "2026-10-22T11:39:10.741Z",
+    "status": "submitted",
+    "attempted": 0,
+    "correct": 0,
+    "wrong": 0,
+    "answers": []
   }
 ]

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, globalShortcut } from "electron";
 import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
@@ -16,6 +16,7 @@ let timerInterval = null;
 let cameraSnapInterval = null;
 let backendProcess = null;
 let viteProcess = null;
+let isLockdownActive = false;
 let snapshotFolder = path.join(import.meta.dirname, "user-camera-snap");
 
 // Function to auto-start Express backend as a headless background process
@@ -131,6 +132,57 @@ async function loadFrontend(win) {
     }
 }
 
+function enableLockdown() {
+    isLockdownActive = true;
+    if (!electronWindow || electronWindow.isDestroyed()) return;
+
+    try {
+        electronWindow.setKiosk(true);
+        electronWindow.setAlwaysOnTop(true, "screen-saver");
+        electronWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    } catch (err) {
+        console.warn("Kiosk set error:", err.message);
+    }
+
+    try {
+        globalShortcut.register("CommandOrControl+Tab", () => {
+            if (electronWindow && !electronWindow.isDestroyed()) {
+                electronWindow.focus();
+                electronWindow.webContents.send("proctoring-violation", {
+                    type: "tab-switch-attempt",
+                    message: "Application switching (Cmd+Tab / Ctrl+Tab) is disabled during the exam."
+                });
+            }
+        });
+        globalShortcut.register("Alt+Tab", () => {
+            if (electronWindow && !electronWindow.isDestroyed()) {
+                electronWindow.focus();
+                electronWindow.webContents.send("proctoring-violation", {
+                    type: "tab-switch-attempt",
+                    message: "Application switching (Alt+Tab) is disabled during the exam."
+                });
+            }
+        });
+        globalShortcut.register("CommandOrControl+M", () => {});
+        globalShortcut.register("CommandOrControl+H", () => {});
+    } catch (err) {
+        console.warn("Global shortcut registration error:", err.message);
+    }
+}
+
+function disableLockdown() {
+    isLockdownActive = false;
+    try {
+        globalShortcut.unregisterAll();
+        if (electronWindow && !electronWindow.isDestroyed()) {
+            electronWindow.setKiosk(false);
+            electronWindow.setAlwaysOnTop(false);
+        }
+    } catch (err) {
+        console.warn("Disable lockdown error:", err.message);
+    }
+}
+
 function createWindow() {
     electronWindow = new BrowserWindow({
         height: 950,
@@ -143,8 +195,49 @@ function createWindow() {
         }
     });
 
+    electronWindow.on('blur', () => {
+        if (isLockdownActive && electronWindow && !electronWindow.isDestroyed()) {
+            setTimeout(() => {
+                if (electronWindow && !electronWindow.isDestroyed()) {
+                    electronWindow.focus();
+                    electronWindow.moveTop();
+                }
+            }, 60);
+            electronWindow.webContents.send('proctoring-violation', {
+                type: 'window-blur',
+                message: 'Warning: Window focus lost or space swipe gesture detected. Tab switching is strictly prohibited.'
+            });
+        }
+    });
+
+    electronWindow.webContents.on('before-input-event', (event, input) => {
+        if (isLockdownActive) {
+            const key = input.key.toLowerCase();
+            if ((input.meta || input.alt || input.control) && ['tab', 'w', 'q', 'm', 'h'].includes(key)) {
+                event.preventDefault();
+                electronWindow.webContents.send('proctoring-violation', {
+                    type: 'shortcut-blocked',
+                    message: `System shortcut ${input.meta ? 'Cmd+' : ''}${input.alt ? 'Alt+' : ''}${input.key.toUpperCase()} is disabled during the exam.`
+                });
+            }
+        }
+    });
+
     loadFrontend(electronWindow);
 }
+
+ipcMain.handle('set-lockdown-mode', (_event, enabled) => {
+    if (enabled) {
+        enableLockdown();
+    } else {
+        disableLockdown();
+    }
+    return { success: true, isLockdownActive };
+});
+
+ipcMain.handle('get-lockdown-status', () => {
+    return isLockdownActive;
+});
 
 ipcMain.handle('start-timer', () => {
     // If timer is already running, do NOT reset startTimestamp!
@@ -277,6 +370,7 @@ if (gotTheLock) {
 }
 
 function cleanupResources() {
+    disableLockdown();
     if (timerInterval) clearInterval(timerInterval);
     if (cameraSnapInterval) clearInterval(cameraSnapInterval);
     if (backendProcess) {
