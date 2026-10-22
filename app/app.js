@@ -4,6 +4,12 @@ import fs from "fs";
 import { spawn } from "child_process";
 import http from "http";
 
+// Enforce single instance lock: prevents duplicate Electron applications
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+    app.quit();
+}
+
 let electronWindow = null;
 let startTimestamp = null;
 let timerInterval = null;
@@ -12,7 +18,7 @@ let backendProcess = null;
 let viteProcess = null;
 let snapshotFolder = path.join(import.meta.dirname, "user-camera-snap");
 
-// Function to auto-start backend if not already listening
+// Function to auto-start Express backend as a headless background process
 function startBackendIfNeeded() {
     const checkReq = http.get("http://localhost:3000/", () => {
         console.log("Backend already active on http://localhost:3000");
@@ -22,10 +28,11 @@ function startBackendIfNeeded() {
         const serverScript = path.join(import.meta.dirname, "..", "backend", "server.js");
         if (fs.existsSync(serverScript)) {
             console.log("Starting backend server from:", serverScript);
-            backendProcess = spawn(process.execPath, [serverScript], {
+            // Must use "node" and ELECTRON_RUN_AS_NODE to prevent spawning a second Electron GUI app
+            backendProcess = spawn("node", [serverScript], {
                 cwd: path.join(import.meta.dirname, "..", "backend"),
                 stdio: "pipe",
-                env: { ...process.env, PORT: "3000" }
+                env: { ...process.env, PORT: "3000", ELECTRON_RUN_AS_NODE: "1" }
             });
 
             backendProcess.stdout?.on("data", (d) => console.log(`[Backend] ${d}`));
@@ -35,7 +42,7 @@ function startBackendIfNeeded() {
     });
 }
 
-// Function to auto-start Vite dev server if not already listening
+// Function to auto-start Vite dev server as a headless background process
 function startViteIfNeeded() {
     return new Promise((resolve) => {
         const checkReq = http.get("http://localhost:5173/", () => {
@@ -52,12 +59,14 @@ function startViteIfNeeded() {
             if (fs.existsSync(viteBin)) {
                 viteProcess = spawn(viteBin, [], {
                     cwd: rootDir,
-                    stdio: "pipe"
+                    stdio: "pipe",
+                    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
                 });
             } else {
                 viteProcess = spawn(npxCmd, ["vite"], {
                     cwd: rootDir,
-                    stdio: "pipe"
+                    stdio: "pipe",
+                    env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }
                 });
             }
 
@@ -73,25 +82,52 @@ if (!fs.existsSync(snapshotFolder)) {
     fs.mkdirSync(snapshotFolder, { recursive: true });
 }
 
-async function loadFrontendWithRetry(win) {
-    const url = "http://localhost:5173";
-    const maxRetries = 25;
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        if (!win || win.isDestroyed()) return;
+// Wait for HTTP server to respond with a valid status before loadURL to prevent ERR_CONNECTION_REFUSED
+function waitForServer(url, timeoutMs = 15000) {
+    const startTime = Date.now();
+    return new Promise((resolve) => {
+        const check = () => {
+            const req = http.get(url, (res) => {
+                if (res.statusCode) {
+                    resolve(true);
+                } else {
+                    retry();
+                }
+            });
+            req.on("error", () => {
+                retry();
+            });
+        };
+
+        const retry = () => {
+            if (Date.now() - startTime > timeoutMs) {
+                resolve(false);
+            } else {
+                setTimeout(check, 300);
+            }
+        };
+
+        check();
+    });
+}
+
+async function loadFrontend(win) {
+    const isViteReady = await waitForServer("http://localhost:5173/", 15000);
+    if (!win || win.isDestroyed()) return;
+
+    if (isViteReady) {
         try {
-            await win.loadURL(url);
+            await win.loadURL("http://localhost:5173");
             return;
         } catch (err) {
-            if (attempt === maxRetries) {
-                console.error("Could not load Vite dev server, checking local build fallback:", err.message);
-                const distIndex = path.join(import.meta.dirname, "..", "dist", "index.html");
-                if (fs.existsSync(distIndex)) {
-                    win.loadFile(distIndex);
-                    return;
-                }
-            }
-            await new Promise((r) => setTimeout(r, 400));
+            console.error("loadURL error:", err.message);
         }
+    }
+
+    // Fallback to built files if Vite fails to start
+    const distIndex = path.join(import.meta.dirname, "..", "dist", "index.html");
+    if (fs.existsSync(distIndex)) {
+        win.loadFile(distIndex);
     }
 }
 
@@ -107,7 +143,7 @@ function createWindow() {
         }
     });
 
-    loadFrontendWithRetry(electronWindow);
+    loadFrontend(electronWindow);
 }
 
 ipcMain.handle('start-timer', () => {
@@ -225,11 +261,20 @@ ipcMain.on("show-rules", () => {
     });
 });
 
-app.whenReady().then(async () => {
-    startBackendIfNeeded();
-    await startViteIfNeeded();
-    createWindow();
-});
+if (gotTheLock) {
+    app.on('second-instance', () => {
+        if (electronWindow) {
+            if (electronWindow.isMinimized()) electronWindow.restore();
+            electronWindow.focus();
+        }
+    });
+
+    app.whenReady().then(async () => {
+        startBackendIfNeeded();
+        await startViteIfNeeded();
+        createWindow();
+    });
+}
 
 function cleanupResources() {
     if (timerInterval) clearInterval(timerInterval);
@@ -254,9 +299,8 @@ function cleanupResources() {
 
 app.on('window-all-closed', () => {
     cleanupResources();
-    if (process.platform !== 'darwin') {
-        app.quit();
-    }
+    // Always quit when window closes to avoid lingering dock instances
+    app.quit();
 });
 
 app.on('will-quit', () => {
