@@ -105,6 +105,16 @@ This document records the chronological history of requirements, bug analyses, e
    - Created `Improvements/004_kiosk_lockdown_mark_for_review_and_ui_enhancements.md`.
    - Created `AI CHAT HISTORY/chat_history.md` (this file).
 
+### Milestone 5: PiP Webcam "LIVE PROCTOR" Badge Refinement
+
+#### User Request:
+> The live proctor written on my camera is too big reduce the size to a level where it is still readable and at the same time I am able to see my face
+
+#### Analysis & Implementation:
+- The previous `.pip-live-badge` was positioned at `bottom: 4px; left: 4px;` across a 140x84 container, which caused the dark banner to directly obscure the lower half of the candidate's face.
+- Repositioned the badge to the **top-right** corner (`top: 5px; right: 5px;`), ensuring it sits up in the ceiling/background area without covering facial features.
+- Reduced badge typography to a clean `8px` micro-badge with `padding: 2px 5px`, reduced pulsing dot size to `4px`, and increased webcam frame size to `150px x 95px` for an unobstructed face view.
+
 ---
 
 ## Final Verification Checklist
@@ -117,4 +127,6 @@ This document records the chronological history of requirements, bug analyses, e
 - [x] High-Contrast Selected Text UI: Implemented
 - [x] Mark for Review Functionality: Implemented
 - [x] Candidate Name: Updated to Omved
+- [x] PiP Live Proctor Badge: Scaled and repositioned away from face
 - [x] GitHub Synchronization: Pushed to `OmvedNagre/athena`
+

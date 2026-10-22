@@ -737,12 +737,12 @@ body {
 
 /* PiP Camera Preview */
 .exam-pip-camera {
-  width: 140px;
-  height: 84px;
-  min-width: 140px;
-  max-width: 140px;
-  min-height: 84px;
-  max-height: 84px;
+  width: 150px;
+  height: 95px;
+  min-width: 150px;
+  max-width: 150px;
+  min-height: 95px;
+  max-height: 95px;
   border-radius: 8px;
   overflow: hidden;
   position: relative;
@@ -758,27 +758,32 @@ body {
 
 .pip-live-badge {
   position: absolute;
-  bottom: 4px;
-  left: 4px;
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(2px);
+  top: 5px;
+  right: 5px;
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(3px);
   color: #ffffff;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  letter-spacing: 0.04em;
+  gap: 3.5px;
+  letter-spacing: 0.03em;
+  line-height: 1;
+  z-index: 2;
+  border: 0.5px solid rgba(255, 255, 255, 0.15);
+  pointer-events: none;
 }
 
 .pip-live-dot {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   background: #22c55e;
   border-radius: 50%;
   animation: pulseDot 1.2s infinite;
+  flex-shrink: 0;
 }
 
 /* Exam Body Grid */

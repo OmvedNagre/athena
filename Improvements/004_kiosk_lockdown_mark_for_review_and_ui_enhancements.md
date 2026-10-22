@@ -60,6 +60,14 @@ This report documents four major advancements implemented across the Athena Exam
 - Updated exam navigation bar to `"Candidate: Omved (student-101)"`.
 - Updated backend payload on session creation to `{ userId: 'student-101', name: 'Omved' }`.
 
+### Item 5: PiP Webcam "LIVE PROCTOR" Badge Refinement
+- **Problem**: The live proctor badge was positioned at the bottom of the compact PiP webcam container and rendered as a wide banner, directly obscuring the candidate's face.
+- **Resolution**:
+  - Repositioned `.pip-live-badge` to the **top-right** corner (`top: 5px; right: 5px;`), completely removing it from the candidate's face, eyes, nose, and mouth.
+  - Reduced font size to a crisp, legible `8px` micro-badge with `padding: 2px 5px` and subtle translucency (`rgba(15, 23, 42, 0.65)`).
+  - Scaled the pulsing green indicator dot to `4px` to keep it subtle yet visible.
+  - Expanded camera box to `150px x 95px` providing a clear, natural field of view.
+
 ---
 
 ## 3. Modified Files
@@ -67,7 +75,7 @@ This report documents four major advancements implemented across the Athena Exam
 | File Path | Description of Changes |
 | :--- | :--- |
 | `src/App.jsx` | Updated candidate name to Omved, added mark for review toggle, audit card UI, and lockdown listeners. |
-| `src/App.css` | Added `::selection` styling, audit card styles, review button and palette styles, and violation alerts. |
+| `src/App.css` | Added `::selection` styling, audit card styles, review button and palette styles, violation alerts, and resized top-corner live proctor badge. |
 | `app/app.js` | Implemented `enableLockdown()`, `disableLockdown()`, blur recovery, and shortcut interception. |
 | `app/preload.js` | Exposed `setLockdownMode`, `getLockdownStatus`, and `registerListenerForProctoringViolation`. |
 | `Improvements/004_kiosk_lockdown_mark_for_review_and_ui_enhancements.md` | Serialized improvement documentation (this document). |
