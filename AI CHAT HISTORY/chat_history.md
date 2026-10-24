@@ -131,7 +131,37 @@ This document records the chronological history of requirements, bug analyses, e
 - [x] Dynamic Candidate Authentication: Implemented (Name & Enrollment ID requested prior to starting test)
 - [x] Dynamic Session Forwarding: Dynamic payload sent to `/exam/start`
 - [x] Dynamic Exam UI: Name & ID shown on navbar, sidebar telemetry, submit confirmation modal, and results screen
+- [x] Auto-Close on Exam Submission: Implemented (10-second countdown with visual timer & immediate close option)
+- [x] Production Electron & Vite Packaging: Configured with `base: './'` and instant file loading
+- [x] Standalone macOS DMG Generation: Successfully generated `release/Athena-1.0.0-arm64.dmg`
 - [x] GitHub Synchronization: Pushed to `OmvedNagre/athena`
+
+---
+
+## Session Milestone: Auto-Close Countdown & Standalone macOS DMG Distribution
+
+### User Prompt
+> "Yes proceed witht the dmg plan....but before that make this change once the exam is submitted auto-close the application 10 sec after the submission....After this proceeed to make .dmg file"
+
+### Assistant Action & Solution
+1. **10-Second Auto-Close on Exam Submission**:
+   - Added `autoCloseRemaining` state and countdown `useEffect` in `src/App.jsx`.
+   - Exposed `closeApp` method in `app/preload.js` and handled `close-app` IPC in `app/app.js` with graceful process termination and `app.quit()`.
+   - Added `.auto-close-countdown-card` in `src/App.jsx` and `src/App.css` featuring a live seconds counter (`10s` down to `0s`), pulsing dot indicator, "Close Application Now" button, and "Return to Setup Screen" button.
+2. **Production Packaging Adaptations**:
+   - Updated `vite.config.js` with `base: './'` for relative asset paths in Electron `win.loadFile()`.
+   - Updated `app/app.js` to skip Vite dev-server polling when `app.isPackaged` and load `dist/index.html` instantly.
+   - Updated backend initialization in `app/app.js` to run using Electron's internal Node runtime (`ELECTRON_RUN_AS_NODE: "1"`) with unpacked backend support.
+   - Updated `backend/server.js` session storage path to writable macOS `userData` folder.
+3. **Electron Builder DMG Generation**:
+   - Installed `electron-builder` as dev dependency.
+   - Configured `package.json` with `main: "app/app.js"`, `dist:mac` script, `asarUnpack: ["backend/**/*"]`, and DMG installer parameters.
+   - Added `release/` and `*.dmg` to `.gitignore` to prevent committing heavy binaries.
+   - Successfully executed `npx electron-builder --mac dmg` producing `release/Athena-1.0.0-arm64.dmg` (~136.4 MB) and `release/mac-arm64/Athena.app`.
+4. **Documentation & Verification**:
+   - Documented in `Improvements/006_auto_close_and_macos_dmg_packaging.md`.
+   - Verified ESLint (`npm run lint` — 0 errors, 0 warnings) and production bundle (`npm run build`).
+
 
 ---
 

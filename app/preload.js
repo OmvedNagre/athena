@@ -72,5 +72,10 @@ contextBridge.exposeInMainWorld("athena", {
         return () => {
             ipcRenderer.removeListener('proctoring-violation', fn);
         };
+    },
+
+    // Function to gracefully close the application after exam submission
+    closeApp: () => {
+        return ipcRenderer.invoke('close-app');
     }
 });

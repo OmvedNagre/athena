@@ -10,17 +10,28 @@ app.use(cors());
 app.use(express.json());
 
 const questionsPath = path.join(__dirname, "data", "questions.json");
-const sessionsPath = path.join(__dirname, "data", "sessions.json");
+const sessionsPath = process.env.ATHENA_SESSIONS_PATH || path.join(__dirname, "data", "sessions.json");
 
 function readQuestions() {
   return JSON.parse(fs.readFileSync(questionsPath, "utf-8"));
 }
 
 function readSessions() {
-  return JSON.parse(fs.readFileSync(sessionsPath, "utf-8"));
+  if (!fs.existsSync(sessionsPath)) {
+    return [];
+  }
+  try {
+    return JSON.parse(fs.readFileSync(sessionsPath, "utf-8"));
+  } catch {
+    return [];
+  }
 }
 
 function saveSessions(sessions) {
+  const dir = path.dirname(sessionsPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
   fs.writeFileSync(sessionsPath, JSON.stringify(sessions, null, 2));
 }
 

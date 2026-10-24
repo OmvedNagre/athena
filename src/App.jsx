@@ -59,6 +59,7 @@ function App() {
   const [examResult, setExamResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [autoCloseRemaining, setAutoCloseRemaining] = useState(10);
 
   // References for Camera Stream
   const videoRef = useRef(null);
@@ -135,6 +136,36 @@ function App() {
       }
     }
   }, [currentView, cameraEnabled]);
+
+  // Auto-close application 10 seconds after exam submission
+  useEffect(() => {
+    if (currentView !== 'submitted') return;
+
+    const timer = setInterval(() => {
+      setAutoCloseRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          if (window.athena?.closeApp) {
+            window.athena.closeApp();
+          } else {
+            window.close();
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [currentView]);
+
+  const handleCloseAppNow = () => {
+    if (window.athena?.closeApp) {
+      window.athena.closeApp();
+    } else {
+      window.close();
+    }
+  };
 
   // Format integer seconds into MM:SS digital clock
   const formatClock = (totalSec) => {
@@ -356,6 +387,7 @@ function App() {
 
       setExamResult(res.result);
       setShowSubmitModal(false);
+      setAutoCloseRemaining(10);
       setCurrentView('submitted');
       setFeedbackNotice('Exam submitted successfully.');
       setTimeout(() => setFeedbackNotice(null), 4000);
@@ -370,6 +402,7 @@ function App() {
 
   // Reset & Return to Setup
   const handleReturnToSetup = async () => {
+    setAutoCloseRemaining(10);
     if (window.athena?.resetTimerOnMain) {
       await window.athena.resetTimerOnMain();
     }
@@ -1066,14 +1099,33 @@ function App() {
             </div>
           </div>
 
-          <div style={{ marginTop: '28px', display: 'flex', justifyContent: 'center', gap: '14px' }}>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleReturnToSetup}
-            >
-              Return to Setup Screen
-            </button>
+          {/* 10-Second Auto-Close Countdown Card */}
+          <div className="auto-close-countdown-card">
+            <div className="auto-close-header">
+              <span className="auto-close-dot"></span>
+              <span className="auto-close-title">
+                Application auto-closing in <strong className="auto-close-timer-digit">{autoCloseRemaining}s</strong>
+              </span>
+            </div>
+            <p className="auto-close-desc">
+              Your exam submission and proctoring telemetry have been verified and saved to disk. The application window will close automatically once the countdown finishes.
+            </p>
+            <div className="auto-close-actions">
+              <button
+                type="button"
+                className="btn btn-danger-solid"
+                onClick={handleCloseAppNow}
+              >
+                Close Application Now
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={handleReturnToSetup}
+              >
+                Return to Setup Screen
+              </button>
+            </div>
           </div>
         </div>
       )}

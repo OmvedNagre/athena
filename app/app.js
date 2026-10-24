@@ -17,7 +17,25 @@ let cameraSnapInterval = null;
 let backendProcess = null;
 let viteProcess = null;
 let isLockdownActive = false;
-let snapshotFolder = path.join(import.meta.dirname, "user-camera-snap");
+let snapshotFolder = null;
+
+function getSnapshotFolder() {
+    if (!snapshotFolder) {
+        if (app.isPackaged) {
+            snapshotFolder = path.join(app.getPath("userData"), "user-camera-snap");
+        } else {
+            snapshotFolder = path.join(import.meta.dirname, "user-camera-snap");
+        }
+    }
+    if (!fs.existsSync(snapshotFolder)) {
+        try {
+            fs.mkdirSync(snapshotFolder, { recursive: true });
+        } catch (e) {
+            console.error("Failed to create snapshot folder:", e);
+        }
+    }
+    return snapshotFolder;
+}
 
 // Function to auto-start Express backend as a headless background process
 function startBackendIfNeeded() {
@@ -26,14 +44,47 @@ function startBackendIfNeeded() {
     });
 
     checkReq.on("error", () => {
-        const serverScript = path.join(import.meta.dirname, "..", "backend", "server.js");
+        const appPath = app.getAppPath();
+        let rootDir = app.isPackaged ? appPath : path.join(import.meta.dirname, "..");
+        let serverScript = path.join(rootDir, "backend", "server.js");
+
+        if (app.isPackaged && !fs.existsSync(serverScript)) {
+            const unpackedPath = appPath.replace(/app\.asar$/, "app.asar.unpacked");
+            const unpackedScript = path.join(unpackedPath, "backend", "server.js");
+            if (fs.existsSync(unpackedScript)) {
+                serverScript = unpackedScript;
+                rootDir = unpackedPath;
+            }
+        }
+
         if (fs.existsSync(serverScript)) {
             console.log("Starting backend server from:", serverScript);
-            // Must use "node" and ELECTRON_RUN_AS_NODE to prevent spawning a second Electron GUI app
-            backendProcess = spawn("node", [serverScript], {
-                cwd: path.join(import.meta.dirname, "..", "backend"),
+            
+            const userDataDir = app.getPath("userData");
+            const sessionsPath = path.join(userDataDir, "sessions.json");
+            if (!fs.existsSync(sessionsPath)) {
+                const bundledSessions = path.join(rootDir, "backend", "data", "sessions.json");
+                if (fs.existsSync(bundledSessions)) {
+                    try {
+                        fs.copyFileSync(bundledSessions, sessionsPath);
+                    } catch {
+                        fs.writeFileSync(sessionsPath, "[]");
+                    }
+                } else {
+                    fs.writeFileSync(sessionsPath, "[]");
+                }
+            }
+
+            const nodeExec = app.isPackaged ? process.execPath : "node";
+            backendProcess = spawn(nodeExec, [serverScript], {
+                cwd: path.join(rootDir, "backend"),
                 stdio: "pipe",
-                env: { ...process.env, PORT: "3000", ELECTRON_RUN_AS_NODE: "1" }
+                env: {
+                    ...process.env,
+                    PORT: "3000",
+                    ELECTRON_RUN_AS_NODE: "1",
+                    ATHENA_SESSIONS_PATH: sessionsPath
+                }
             });
 
             backendProcess.stdout?.on("data", (d) => console.log(`[Backend] ${d}`));
@@ -43,8 +94,12 @@ function startBackendIfNeeded() {
     });
 }
 
-// Function to auto-start Vite dev server as a headless background process
+// Function to auto-start Vite dev server as a headless background process (dev only)
 function startViteIfNeeded() {
+    if (app.isPackaged) {
+        return Promise.resolve(false);
+    }
+
     return new Promise((resolve) => {
         const checkReq = http.get("http://localhost:5173/", () => {
             console.log("Vite dev server already active on http://localhost:5173");
@@ -78,11 +133,6 @@ function startViteIfNeeded() {
     });
 }
 
-// Ensure default snapshot folder exists
-if (!fs.existsSync(snapshotFolder)) {
-    fs.mkdirSync(snapshotFolder, { recursive: true });
-}
-
 // Wait for HTTP server to respond with a valid status before loadURL to prevent ERR_CONNECTION_REFUSED
 function waitForServer(url, timeoutMs = 15000) {
     const startTime = Date.now();
@@ -113,6 +163,18 @@ function waitForServer(url, timeoutMs = 15000) {
 }
 
 async function loadFrontend(win) {
+    if (!win || win.isDestroyed()) return;
+
+    if (app.isPackaged) {
+        const distIndex = path.join(app.getAppPath(), "dist", "index.html");
+        try {
+            await win.loadFile(distIndex);
+        } catch (err) {
+            console.error("loadFile dist error:", err);
+        }
+        return;
+    }
+
     const isViteReady = await waitForServer("http://localhost:5173/", 15000);
     if (!win || win.isDestroyed()) return;
 
@@ -311,9 +373,10 @@ ipcMain.handle('get-timer-state', () => {
 });
 
 ipcMain.handle('select-snapshot-folder', async () => {
+    const defaultDir = getSnapshotFolder();
     const result = await dialog.showOpenDialog(electronWindow, {
         title: "Select Folder for Camera Snapshots",
-        defaultPath: snapshotFolder,
+        defaultPath: defaultDir,
         properties: ["openDirectory", "createDirectory"]
     });
 
@@ -321,22 +384,29 @@ ipcMain.handle('select-snapshot-folder', async () => {
         snapshotFolder = result.filePaths[0];
         return snapshotFolder;
     }
-    return snapshotFolder;
+    return defaultDir;
 });
 
 ipcMain.handle('get-snapshot-folder', () => {
-    return snapshotFolder;
+    return getSnapshotFolder();
 });
 
 ipcMain.handle('store-camera-snap-image-on-disk', (_event, data) => {
-    const targetDir = snapshotFolder || path.join(import.meta.dirname, "user-camera-snap");
-    if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-    }
+    const targetDir = getSnapshotFolder();
     const fileName = `snap_${Date.now()}.jpg`;
     const filePath = path.join(targetDir, fileName);
     fs.writeFileSync(filePath, Buffer.from(data));
     return { success: true, filePath, fileName, folder: targetDir };
+});
+
+// Graceful application shutdown handler
+ipcMain.handle('close-app', () => {
+    cleanupResources();
+    if (electronWindow && !electronWindow.isDestroyed()) {
+        electronWindow.close();
+    }
+    app.quit();
+    return { closed: true };
 });
 
 ipcMain.on("show-rules", () => {
@@ -363,6 +433,7 @@ if (gotTheLock) {
     });
 
     app.whenReady().then(async () => {
+        getSnapshotFolder();
         startBackendIfNeeded();
         await startViteIfNeeded();
         createWindow();
