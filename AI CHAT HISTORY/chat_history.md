@@ -188,4 +188,21 @@ This document records the chronological history of requirements, bug analyses, e
    - Documented in `Improvements/005_dynamic_candidate_credentials_and_pip_badge_scaling.md`.
    - Verified clean build (`npm run build`) and ESLint (`npm run lint`).
 
+---
+
+## Session Milestone: System Design Architecture & Comprehensive README
+
+### User Prompt
+> "Once done with all this....Make a detailed readme with structural design(System design diagram)....and then"
+
+### Assistant Action & Solution
+1. **Architectural System Design Diagram**:
+   - Designed a comprehensive Mermaid graph illustrating Host OS layer, Electron Main Process, Secure Context Bridge (`preload.js`), Renderer Process (`React 19`), and Headless Express Backend Service (`:3000`).
+   - Detailed continuous surveillance telemetry, snapshot scheduling, and single-instance mutex locks.
+2. **Process Interaction & Sequence Diagram**:
+   - Documented the end-to-end lifecycle from candidate setup, launch gating, active proctoring, answer recording, review states, to final score submission and 10s auto-close termination.
+3. **Complete Technical Documentation (`README.md`)**:
+   - Replaced default Vite template with exhaustive documentation covering architecture, lockdown engine mechanics, full REST API endpoints with request/response schemas, folder hierarchy, local setup, and DMG build instructions.
+
+
 
