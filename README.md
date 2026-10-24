@@ -38,37 +38,37 @@ Athena employs a multi-process architecture with strict process isolation, conte
 ```mermaid
 graph TD
     subgraph Host["macOS Operating System Environment"]
-        Kiosk["macOS Kiosk Mode & Spaces Lock"]
-        Shortcuts["System Shortcut Interceptor (Cmd+Tab, Cmd+Q, Alt+Tab)"]
+        Kiosk["macOS Kiosk Mode and Spaces Lock"]
+        Shortcuts["System Shortcut Interceptor - Cmd+Tab, Cmd+Q, Alt+Tab"]
         CameraHardware["Hardware Webcam / AVCaptureSession"]
-        DiskStorage["Local Disk Storage (app.getPath('userData'))"]
+        DiskStorage["Local Disk Storage - app.getPath userData"]
     end
 
-    subgraph ElectronMain["Electron Main Process (Node.js Environment)"]
-        App["App Lifecycle Controller (app/app.js)"]
+    subgraph ElectronMain["Electron Main Process - Node.js"]
+        App["App Lifecycle Controller - app/app.js"]
         SingleInstance["Single Instance Mutex Lock"]
         TimerService["Main High-Precision Stopwatch Engine"]
         SnapScheduler["5-Second Camera Snapshot Interval"]
-        LockdownEngine["Window Stacking (screen-saver level) & Blur Guard"]
+        LockdownEngine["Window Stacking and Blur Guard"]
         ProcessManager["Headless Background Process Manager"]
     end
 
-    subgraph IPCBridge["Secure Context Bridge (app/preload.js)"]
-        ContextBridge["contextBridge.exposeInMainWorld('athena')"]
-        IPCHandlers["IPC Renderer ↔ Main Channels"]
+    subgraph IPCBridge["Secure Context Bridge - app/preload.js"]
+        ContextBridge["contextBridge.exposeInMainWorld athena"]
+        IPCHandlers["IPC Renderer and Main Channels"]
     end
 
-    subgraph RendererProcess["Renderer Process (React 19 + Vite UI)"]
-        SetupView["View 1: Verification & Dynamic Candidate Auth"]
-        ExamView["View 2: Active Exam, PiP Webcam & Question Palette"]
-        ResultsView["View 3: Score Breakdown & 10s Auto-Close Countdown"]
+    subgraph RendererProcess["Renderer Process - React 19 UI"]
+        SetupView["View 1: Verification and Dynamic Candidate Auth"]
+        ExamView["View 2: Active Exam, PiP Webcam and Question Palette"]
+        ResultsView["View 3: Score Breakdown and 10s Auto-Close"]
         ReviewState["Mark for Review State Engine"]
     end
 
-    subgraph BackendProcess["Headless Express Backend Service (Node.js)"]
-        ExpressApp["Express.js Server (backend/server.js :3000)"]
+    subgraph BackendProcess["Headless Express Backend Service"]
+        ExpressApp["Express.js Server - backend/server.js :3000"]
         ExamRouter["Exam Session Controller"]
-        JSONStore["JSON File Database (questions.json & sessions.json)"]
+        JSONStore["JSON File Database - questions and sessions"]
     end
 
     %% Interactions
@@ -76,23 +76,23 @@ graph TD
     App --> LockdownEngine
     LockdownEngine -.-> Kiosk
     LockdownEngine -.-> Shortcuts
-    ProcessManager -->|spawn ELECTRON_RUN_AS_NODE| ExpressApp
+    ProcessManager -->|"spawn ELECTRON_RUN_AS_NODE"| ExpressApp
     
-    CameraHardware -->|getUserMedia| RendererProcess
-    RendererProcess -->|ArrayBuffer via storeCameraSnapImageOnDisk| IPCHandlers
+    CameraHardware -->|"getUserMedia"| RendererProcess
+    RendererProcess -->|"storeCameraSnapImageOnDisk"| IPCHandlers
     IPCHandlers --> SnapScheduler
-    SnapScheduler -->|Save snap_timestamp.jpg| DiskStorage
+    SnapScheduler -->|"Save snap_timestamp.jpg"| DiskStorage
 
-    TimerService -->|IPC tick| IPCHandlers
+    TimerService -->|"IPC timer tick"| IPCHandlers
     IPCHandlers --> RendererProcess
 
-    RendererProcess -->|HTTP REST Client (fetch)| ExpressApp
+    RendererProcess -->|"HTTP REST API Client"| ExpressApp
     ExpressApp --> JSONStore
     JSONStore --> DiskStorage
 
-    RendererProcess -->|closeApp IPC| IPCHandlers
+    RendererProcess -->|"closeApp IPC"| IPCHandlers
     IPCHandlers --> App
-    App -->|Graceful Process Termination & Quit| Host
+    App -->|"Graceful Termination and Quit"| Host
 ```
 
 ---
@@ -104,49 +104,49 @@ sequenceDiagram
     autonumber
     actor Candidate as Student / Candidate
     participant UI as React 19 Frontend
-    participant Bridge as Electron Preload (athena API)
+    participant Bridge as Electron Preload - athena API
     participant Main as Electron Main Process
-    participant Backend as Express Backend (:3000)
-    participant Disk as Local Disk (UserData)
+    participant Backend as Express Backend - port 3000
+    participant Disk as Local Disk Storage
 
-    Candidate->>UI: Enters Name & Enrollment ID
-    Candidate->>UI: Grants Camera & Fullscreen Permissions
+    Candidate->>UI: Enters Name and Enrollment ID
+    Candidate->>UI: Grants Camera and Fullscreen Permissions
     Candidate->>UI: Clicks "Go To Test"
     
-    UI->>Bridge: startTimerOnMain() & setLockdownMode(true)
-    Bridge->>Main: IPC 'start-timer' & 'set-lockdown-mode'
+    UI->>Bridge: startTimerOnMain and setLockdownMode
+    Bridge->>Main: IPC start-timer and set-lockdown-mode
     Main->>Main: Enable Kiosk, Block Cmd+Tab, Start 5s Snap Interval
     
-    UI->>Backend: POST /exam/start { userId, name }
+    UI->>Backend: POST /exam/start with userId and name
     Backend->>Disk: Persist Session Entry
-    Backend-->>UI: { sessionId: "session-xxx" }
+    Backend-->>UI: Return sessionId
     
     UI->>Backend: GET /exam/mcq
-    Backend-->>UI: Questions Payload (sanitized without answers)
+    Backend-->>UI: Questions Payload (correct answers hidden)
 
     loop Every 5 Seconds (Continuous Proctoring)
-        Main->>Bridge: IPC 'camera-shot'
+        Main->>Bridge: IPC camera-shot
         Bridge->>UI: Trigger Video Canvas Snapshot
-        UI->>Bridge: storeCameraSnapImageOnDisk(ArrayBuffer)
-        Bridge->>Main: IPC 'store-camera-snap-image-on-disk'
-        Main->>Disk: Write frame to /user-camera-snap/snap_xxx.jpg
+        UI->>Bridge: storeCameraSnapImageOnDisk with binary data
+        Bridge->>Main: IPC store-camera-snap-image-on-disk
+        Main->>Disk: Write frame to disk as snap_timestamp.jpg
     end
 
-    Candidate->>UI: Answers & Marks for Review
-    UI->>Backend: POST /exam/answer { sessionId, questionId, selectedAnswer }
+    Candidate->>UI: Answers and Marks for Review
+    UI->>Backend: POST /exam/answer with selectedOption
     
     Candidate->>UI: Final Submission Confirmed
-    UI->>Backend: POST /exam/submit { sessionId }
-    Backend->>Disk: Evaluate Score & Save Results
+    UI->>Backend: POST /exam/submit
+    Backend->>Disk: Evaluate Score and Save Results
     Backend-->>UI: Return Final Results
     
-    UI->>Bridge: stopTimerOnMain() & setLockdownMode(false)
+    UI->>Bridge: stopTimerOnMain and release lockdown
     Main->>Main: Restore Window, Release Shortcuts
     
     UI->>UI: Initiate 10-Second Auto-Close Countdown
     Note over UI: Ticking 10s... 9s... 8s...
-    UI->>Bridge: closeApp() at 0s
-    Bridge->>Main: IPC 'close-app'
+    UI->>Bridge: closeApp at 0s
+    Bridge->>Main: IPC close-app
     Main->>Backend: Terminate child process
     Main->>Main: app.quit()
 ```

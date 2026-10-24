@@ -1,0 +1,31 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.athena.examproctor
+productName: Athena
+files:
+  - filter:
+      - dist/**/*
+      - app/**/*
+      - backend/**/*
+asarUnpack:
+  - backend/**/*
+mac:
+  category: public.app-category.education
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  identity: null
+dmg:
+  title: Athena Exam Proctor
+  contents:
+    - x: 130
+      'y': 220
+    - x: 410
+      'y': 220
+      type: link
+      path: /Applications
+electronVersion: 44.3.0

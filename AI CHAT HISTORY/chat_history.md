@@ -204,5 +204,30 @@ This document records the chronological history of requirements, bug analyses, e
 3. **Complete Technical Documentation (`README.md`)**:
    - Replaced default Vite template with exhaustive documentation covering architecture, lockdown engine mechanics, full REST API endpoints with request/response schemas, folder hierarchy, local setup, and DMG build instructions.
 
+---
+
+## Session Milestone: Mermaid Diagram GitHub Rendering Fix & Release Folder Tracking
+
+### User Prompt
+> "1. System Architecture & Structural Design
+> Athena employs a multi-process architecture with strict process isolation, context bridging, and headless background service virtualization.
+> High-Level Architecture Diagram
+> Unable to render rich display
+> Parse error on line 49:
+> ...->|HTTP REST Client (fetch)| ExpressApp
+> -----------------------^
+> Expecting ..., got 'PS'
+> issue in readme.md and the release fodler is not in the gitHub repo"
+
+### Assistant Action & Solution
+1. **Mermaid Diagram Syntax Repair (`README.md`)**:
+   - Fixed line 49 unquoted parentheses error (`|HTTP REST Client (fetch)|`) by removing raw parentheses inside edge labels and standardizing on `"HTTP REST API Client"`.
+   - Sanitized all node definitions and participant labels across both the High-Level Architecture graph and the Sequence Diagram to ensure 100% compliance with GitHub's Mermaid parser.
+2. **Release Folder Tracking (`.gitignore` & `release/README.md`)**:
+   - Updated `.gitignore` to allow tracking the `release/` directory in the repository while ignoring heavy binary artifacts (`release/*.dmg` at 130MB and `release/mac-arm64/` bundle) that exceed GitHub's strict 100MB per-file push limit.
+   - Created `release/README.md` containing build manifests, SHA-256 checksums, and local DMG compilation instructions (`npm run dist:mac`).
+   - Tracked release configurations (`builder-effective-config.yaml`, `latest-mac.yml`, `builder-debug.yml`) to ensure the `release/` folder is prominently visible on GitHub.
+
+
 
 

@@ -14,9 +14,12 @@ backend/node_modules/
 # Build outputs
 dist/
 dist-ssr/
-release/
-*.dmg
 *.local
+
+# Release artifacts (ignore binaries >100MB which exceed GitHub push limits)
+release/*.dmg
+release/*.dmg.blockmap
+release/mac-arm64/
 
 # Editor directories and files
 .vscode/*

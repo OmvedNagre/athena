@@ -1,0 +1,8 @@
+version: 1.0.0
+files:
+  - url: Athena-1.0.0-arm64.dmg
+    sha512: gBVonHoS4x3FeMb61wXbsh/4WCUI2lsaBB9m5dU3d2I6zMoMxjMkckI0qG50n/3SZsQC/q1jVpJ11BTmnhgOoQ==
+    size: 136450518
+path: Athena-1.0.0-arm64.dmg
+sha512: gBVonHoS4x3FeMb61wXbsh/4WCUI2lsaBB9m5dU3d2I6zMoMxjMkckI0qG50n/3SZsQC/q1jVpJ11BTmnhgOoQ==
+releaseDate: '2026-10-24T15:02:19.185Z'
